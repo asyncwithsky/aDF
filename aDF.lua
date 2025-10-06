@@ -39,44 +39,230 @@ local last_target_change_time = GetTime()
 
 -- translation table for debuff check on target
 
-aDFSpells = {
-	["Sunder Armor"] = "Sunder Armor",
-	["Armor Shatter"] = "Armor Shatter",
-	["Faerie Fire"] = "Faerie Fire",
-	["Nightfall"] = "Spell Vulnerability",
-	["Flame Buffet"] = "Flame Buffet",
-	["Scorch"] = "Fire Vulnerability",
-	["Ignite"] = "Ignite",
-	["Curse of Recklessness"] = "Curse of Recklessness",
-	["Curse of the Elements"] = "Curse of the Elements",
-	["Curse of Shadows"] = "Curse of Shadow",
-	["Shadow Bolt"] = "Shadow Vulnerability",
-	["Shadow Weaving"] = "Shadow Weaving",
-	["Expose Armor"] = "Expose Armor",
-}
-	--["Vampiric Embrace"] = "Vampiric Embrace",
-	--["Crystal Yield"] = "Crystal Yield",
-	--["Mage T3 6/9 Bonus"] = "Elemental Vulnerability",
--- table with names and textures 
+aDFTargetData = {}
 
-aDFDebuffs = {
-	["Sunder Armor"] = "Interface\\Icons\\Ability_Warrior_Sunder",
-	["Armor Shatter"] = "Interface\\Icons\\INV_Axe_12",
-	["Faerie Fire"] = "Interface\\Icons\\Spell_Nature_FaerieFire",
-	["Nightfall"] = "Interface\\Icons\\Spell_Holy_ElunesGrace",
-	["Flame Buffet"] = "Interface\\Icons\\Spell_Fire_Fireball",
-	["Scorch"] = "Interface\\Icons\\Spell_Fire_SoulBurn",
-	["Ignite"] = "Interface\\Icons\\Spell_Fire_Incinerate",
-	["Curse of Recklessness"] = "Interface\\Icons\\Spell_Shadow_UnholyStrength",
-	["Curse of the Elements"] = "Interface\\Icons\\Spell_Shadow_ChillTouch",
-	["Curse of Shadows"] = "Interface\\Icons\\Spell_Shadow_CurseOfAchimonde",
-	["Shadow Bolt"] = "Interface\\Icons\\Spell_Shadow_ShadowBolt",
-	["Shadow Weaving"] = "Interface\\Icons\\Spell_Shadow_BlackPlague",
-	["Expose Armor"] = "Interface\\Icons\\Ability_Warrior_Riposte",
+aDFSpellConfig = {
+    ["Sunder Armor"] = {
+        duration = 30,
+		name = "Sunder Armor",
+		icon = "Interface\\Icons\\Ability_Warrior_Sunder"
+    },
+	["Armor Shatter"] = {
+		duration = 45,
+		name = "Annihilator",
+		icon = "Interface\\Icons\\INV_Axe_12"
+    },
+    ["Expose Armor"] = {
+        duration = 30,
+		name = "Expose Armor",
+		icon = "Interface\\Icons\\Ability_Warrior_Riposte"
+    },
+	["Faerie Fire"] = {
+        duration = 40,
+		name = "Faerie Fire",
+		icon = "Interface\\Icons\\Spell_Nature_FaerieFire"
+	},
+	["Spell Vulnerability"] = {
+		duration = 7,
+		name = "Nightfall",
+		icon = "Interface\\Icons\\Spell_Holy_ElunesGrace"
+	},
+	["Flame Buffet"] = {
+		duration = 20,
+		name = "Flame Buffet",
+		icon = "Interface\\Icons\\Spell_Fire_Fireball"
+	},
+	["Fire Vulnerability"] = {
+		duration = 30,
+		name = "Scorch",
+		icon = "Interface\\Icons\\Spell_Fire_SoulBurn"
+	},
+	["Curse of Recklessness"] = {
+		duration = 120,
+		name = "Curse of Recklessness",
+		icon = "Interface\\Icons\\Spell_Shadow_UnholyStrength"
+	},
+	["Curse of the Elements"] = {
+		duration = 300,
+		name = "Curse of the Elements",
+		icon = "Interface\\Icons\\Spell_Shadow_ChillTouch"
+	},
+	["Curse of Shadow"] = {
+		duration = 300,
+		name = "Curse of Shadow",
+		icon = "Interface\\Icons\\Spell_Shadow_CurseOfAchimonde"
+	},
+	["Shadow Bolt"] = {
+		duration = 10,
+		name = "Shadow Bolt",
+		icon = "Interface\\Icons\\Spell_Shadow_ShadowBolt"
+	},
+	["Curse of Tongue"] = {
+		duration = 30,
+		name = "Curse of Tongue",
+		icon = "Interface\\Icons\\Spell_Shadow_CurseOfTounges"
+	},
+	["Shadow Weaving"] = {
+		duration = 15,
+		name = "Shadow Weaving",
+		icon = "Interface\\Icons\\Spell_Shadow_BlackPlague"
+	},
+	["Feast of Hakkar"] = {
+		duration = 10,
+		name = "Feast of Hakkar",
+		icon = "Interface\\Icons\\Spell_Shadow_BloodBoil"
+	},
+	["Freezing Cold"] = {
+		duration = 10,
+		name = "Freezing Cold",
+		icon = "Interface\\Icons\\Spell_Frost_FrostShock"
+	},
+	["Holy Sunder"] = {
+		duration = 60,
+		name = "Holy Sunder",
+		icon = "Interface\\Icons\\Spell_Shadow_CurseOfSargeras"
+	},
+	["Corrosive Poison"] = {
+		duration = 30,
+		name = "The Ripper (-60 Armor)",
+		icon = "Interface\\Icons\\Spell_Nature_CorrosiveBreath"
+	},
 }
-	--["Vampiric Embrace"] = "Interface\\Icons\\Spell_Shadow_UnsummonBuilding",
-	--["Crystal Yield"] = "Interface\\Icons\\INV_Misc_Gem_Amethyst_01",
-	--["Elemental Vulnerability"] = "Interface\\Icons\\Spell_Holy_Dizzy",
+
+
+local aDFDebuffAliases = {
+    ["Faerie Fire (Feral)"] = "Faerie Fire",
+    ["Faerie Fire"] = "Faerie Fire"
+}
+
+local aDFOtherPlayerPatterns = {
+	"^(%S+)'s (.-) was",
+	"^(%S+)'s (.-) missed"
+}
+
+local aDFPlayerPatterns = {
+	"Your (.-) is parried by .*",
+	"Your (.-) was", 
+	"Your (.-) missed .*"
+}
+
+function aDF:GetTargetData(unit)
+	local _, guid = UnitExists(unit)
+	if not guid then return nil end
+	
+	if not UnitIsDead(guid) and aDFTargetData[guid] == nil then
+		aDFTargetData[guid] = {
+			timers = {},
+			casters = {},
+			armor = UnitResistance(guid, 0) or 0,
+			lastSeen = GetTime()
+		}
+	end
+	
+	aDFTargetData[guid].lastSeen = GetTime()
+	return aDFTargetData[guid]
+end
+
+function aDF:GetDebuffTimer(targetData, debuffName)
+    if not targetData or not debuffName then return nil end
+    
+    local config = aDFSpellConfig[debuffName]
+    if not config then return nil end
+    
+    if not targetData.timers[debuffName] then
+        targetData.timers[debuffName] = {
+            timer = 0,
+            casters = {}
+        }
+    end
+    
+    return targetData.timers[debuffName]
+end
+
+function aDF:SetDebuffTimer(targetData, debuffName, time)
+    local timerData = aDF:GetDebuffTimer(targetData, debuffName)
+    if timerData then
+        timerData.timer = time or GetTime()
+        return true
+    end
+    return false
+end
+
+function aDF:HandleDebuffCast(unit, caster, debuffName)
+    local targetData = aDF:GetTargetData(unit)
+    if not targetData then return end
+    
+    local timerData = aDF:GetDebuffTimer(targetData, debuffName)
+    if not timerData then return end
+    
+    if timerData.casters then
+        timerData.casters[caster] = timerData.timer
+    end
+    
+    timerData.timer = GetTime()
+end
+
+function aDF:HandleDebuffMiss(unit, caster, debuffName)
+    local targetData = aDF:GetTargetData(unit)
+    if not targetData then return end
+    
+    local timerData = aDF:GetDebuffTimer(targetData, debuffName)
+    if not timerData or not timerData.casters then return end
+    
+    if timerData.casters[caster] then
+        timerData.timer = timerData.casters[caster]
+        timerData.casters[caster] = nil
+    end
+end
+
+function aDF:CleanupTargetData()
+    local currentTime = GetTime()
+    local toRemove = {}
+    
+    for guid, data in pairs(aDFTargetData) do
+        local hasActiveTimers = false
+        for debuffName, timerData in pairs(data.timers) do
+            if timerData.timer > 0 and (currentTime - timerData.timer) < 300 then
+                hasActiveTimers = true
+                break
+            end
+        end
+        
+        if currentTime - data.lastSeen > 300 and not hasActiveTimers then
+            table.insert(toRemove, guid)
+        end
+    end
+    
+    for _, guid in ipairs(toRemove) do
+        aDFTargetData[guid] = nil
+    end
+end
+
+
+function aDF:ValidateConfiguration()
+    local validOptions = {}
+    
+    for debuffName, value in pairs(guiOptions) do
+        if aDFSpellConfig[debuffName] then
+            validOptions[debuffName] = value
+        else
+            adfprint("Removing obsolete debuff from options: " .. debuffName)
+            
+            if aDF_frames[debuffName] then
+                aDF_frames[debuffName]:Hide()
+                aDF_frames[debuffName] = nil
+            end
+            
+            if aDF_guiframes[debuffName] then
+                aDF_guiframes[debuffName]:Hide()
+                aDF_guiframes[debuffName] = nil
+            end
+        end
+    end
+    
+    guiOptions = validOptions
+end
+
 
 aDFArmorVals = {
 	[90]   = "Sunder Armor x1", -- r1 x1
@@ -115,23 +301,26 @@ aDFArmorVals = {
 	[465]  = "Curse of Recklessness R3",
 	[290]  = "Curse of Recklessness R2",
 	[140]  = "Curse of Recklessness R1",
-	[600]  = "Annihilator x3 ?", --
-	[400]  = "Annihilator x2 ?", -- Armor Shatter spell=16928, or Puncture Armor r2 spell=17315
-	[200]  = "Annihilator x1 ?", --
+	--[600]  = "Annihilator x3 ?", --
+	--[400]  = "Annihilator x2 ?", -- Armor Shatter spell=16928, or Puncture Armor r2 spell=17315
+	--[200]  = "Annihilator x1 ?", --
+	[300]  = "Annihilator x3 ?", --
+	[200]  = "Annihilator x2 ?", -- Armor Shatter spell=16928, or Puncture Armor r2 spell=17315
+	[100]  = "Annihilator x1 ?", --
 	[50]   = "Torch of Holy Flame", -- Can also be spell=13526, item=1434 but those conflict FF
-	[100]  = "Weapon Proc Faerie Fire", -- non-stacking proc spell=13752, Puncture Armor r1 x1 spell=11791
-	[300]  = "Weapon Proc Faerie Fire", -- Dark Iron Sunderer item=11607, Puncture Armor r1 x3
+	-- [100]  = "Weapon Proc Faerie Fire", -- non-stacking proc spell=13752, Puncture Armor r1 x1 spell=11791
+	-- [300]  = "Weapon Proc Faerie Fire", -- Dark Iron Sunderer item=11607, Puncture Armor r1 x3
 }
 
 function aDF_Default()
-	if guiOptions == nil then
-		guiOptions = {}
-		for k,v in pairs(aDFDebuffs) do
-			if guiOptions[k] == nil then
-				guiOptions[k] = 1
-			end
-		end
-	end
+    if guiOptions == nil then
+        guiOptions = {}
+        for k, v in pairs(aDFSpellConfig) do
+            guiOptions[k] = 1
+        end
+    else
+        aDF:ValidateConfiguration()
+    end
 end
 
 -- the main frame
@@ -210,40 +399,45 @@ function aDF:Init()
 	--
 	
 	f_ =  0
-	for name,texture in pairs(aDFDebuffs) do
+	-- for name,texture in pairs(aDFDebuffs) do
+	for name,v in pairs(aDFSpellConfig) do
 		aDFsize = 24+gui_Optionsxy
 		aDF_frames[name] = aDF_frames[name] or aDF.Create_frame(name)
 		local frame = aDF_frames[name]
 		frame:SetWidth(aDFsize)
 		frame:SetHeight(aDFsize)
 		frame:SetPoint("BOTTOMLEFT",aDFsize*f_,-aDFsize)
-		frame.icon:SetTexture(texture)
+		frame.icon:SetTexture(v.icon)
 		frame:SetFrameLevel(2)
 		frame:Show()
 		frame:SetScript("OnEnter", function() 
 			GameTooltip:SetOwner(frame, "ANCHOR_BOTTOMRIGHT");
-			GameTooltip:SetText(this:GetName(), 255, 255, 0, 1, 1);
+			local displayName = aDFSpellConfig[this:GetName()].name
+			if this:GetName() == "Faerie Fire" then
+				displayName = "Faerie Fire / Faerie Fire (Feral)"
+			end
+			GameTooltip:SetText(displayName, 255, 255, 0, 1, 1);
 			GameTooltip:Show()
-			end)
+		end)
 		frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		frame:SetScript("OnMouseDown", function()
 			if (arg1 == "RightButton") then
 				tdb=this:GetName()
 				if aDF_target ~= nil then
 					if UnitAffectingCombat(aDF_target) and UnitCanAttack("player", aDF_target) and guiOptions[tdb] ~= nil then
-						if not aDF:GetDebuff(aDF_target,aDFSpells[tdb]) then
-							aDF:SendChatMessage("["..tdb.."] is not active on "..UnitName(aDF_target), gui_chan)
+						if not aDF:GetDebuff(aDF_target,tdb) then
+							aDF:SendChatMessage("["..aDFSpellConfig[tdb].name.."] is not active on "..UnitName(aDF_target), gui_chan)
 						else
-							if aDF:GetDebuff(aDF_target,aDFSpells[tdb],1) == 1 then
+							if aDF:GetDebuff(aDF_target,tdb,1) == 1 then
 								s_ = "stack"
-							elseif aDF:GetDebuff(aDF_target,aDFSpells[tdb],1) > 1 then
+							elseif aDF:GetDebuff(aDF_target,tdb,1) > 1 then
 								s_ = "stacks"
 							end
-							if aDF:GetDebuff(aDF_target,aDFSpells[tdb],1) >= 1 and aDF:GetDebuff(aDF_target,aDFSpells[tdb],1) < 5 and tdb ~= "Armor Shatter" then
-								aDF:SendChatMessage(UnitName(aDF_target).." has "..aDF:GetDebuff(aDF_target,aDFSpells[tdb],1).." ["..tdb.."] "..s_, gui_chan)
+							if aDF:GetDebuff(aDF_target,tdb,1) >= 1 and aDF:GetDebuff(aDF_target,tdb,1) < 5 and tdb ~= "Armor Shatter" then
+								aDF:SendChatMessage(UnitName(aDF_target).." has "..aDF:GetDebuff(aDF_target,tdb,1).." ["..aDFSpellConfig[tdb].name.."] "..s_, gui_chan)
 							end
-							if tdb == "Armor Shatter" and aDF:GetDebuff(aDF_target,aDFSpells[tdb],1) >= 1 and aDF:GetDebuff(aDF_target,aDFSpells[tdb],1) < 3 then
-								aDF:SendChatMessage(UnitName(aDF_target).." has "..aDF:GetDebuff(aDF_target,aDFSpells[tdb],1).." ["..tdb.."] "..s_, gui_chan)
+							if tdb == "Armor Shatter" and aDF:GetDebuff(aDF_target,tdb,1) >= 1 and aDF:GetDebuff(aDF_target,tdb,1) <= 3 then
+								aDF:SendChatMessage(UnitName(aDF_target).." has "..aDF:GetDebuff(aDF_target,tdb,1).." ["..aDFSpellConfig[tdb].name.."] "..s_, gui_chan)
 							end
 						end
 					end
@@ -267,13 +461,13 @@ function aDF.Create_frame(name)
 	frame.dur = frame:CreateFontString(nil, "OVERLAY")
 	frame.dur:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
 	frame.dur:SetFont("Fonts\\FRIZQT__.TTF", 10+gui_Optionsxy)
-	frame.dur:SetTextColor(255, 255, 0, 1)
+	frame.dur:SetTextColor(0, 255, 255, 1)
 	frame.dur:SetShadowOffset(2,-2)
 	frame.dur:SetText("0")
 	frame.nr = frame:CreateFontString(nil, "OVERLAY")
 	frame.nr:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
 	frame.nr:SetFont("Fonts\\FRIZQT__.TTF", 10+gui_Optionsxy)
-	frame.nr:SetTextColor(255, 255, 0, 1)
+	frame.nr:SetTextColor(0, 255, 255, 1)
 	frame.nr:SetShadowOffset(2,-2)
 	frame.nr:SetText("1")
 	--DEFAULT_CHAT_FRAME:AddMessage("----- Adding new frame")
@@ -296,14 +490,18 @@ function aDF.Create_guiframe(name)
 		aDF:Update()
 		end)
 	frame:SetScript("OnEnter", function() 
-		GameTooltip:SetOwner(frame, "ANCHOR_RIGHT");
-		GameTooltip:SetText(name, 255, 255, 0, 1, 1);
+		GameTooltip:SetOwner(frame, "ANCHOR_BOTTOMRIGHT");
+		local displayName = aDFSpellConfig[this:GetName()].name
+		if this:GetName() == "Faerie Fire" then
+			displayName = "Faerie Fire / Faerie Fire (Feral)"
+		end
+		GameTooltip:SetText(displayName, 255, 255, 0, 1, 1);
 		GameTooltip:Show()
 	end)
 	frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	frame:SetChecked(guiOptions[name])
 	frame.Icon = frame:CreateTexture(nil, 'ARTWORK')
-	frame.Icon:SetTexture(aDFDebuffs[name])
+	frame.Icon:SetTexture(aDFSpellConfig[name].icon)
 	frame.Icon:SetWidth(25)
 	frame.Icon:SetHeight(25)
 	frame.Icon:SetPoint("CENTER",-30,0)
@@ -312,81 +510,83 @@ function aDF.Create_guiframe(name)
 end
 
 -- update function for the text/debuff frames
-
-local sunderers = {}
-local shattered_at = GetTime()
-local sundered_at = GetTime()
 local anni_stacks_maxed = false
 
 function aDF:Update()
-	if aDF_target ~= nil and UnitExists(aDF_target) and not UnitIsDead(aDF_target) then
-		if UnitIsUnit(aDF_target,'targettarget') and GetTime() < (last_target_change_time + 1.3) then
-			-- we won't allow updates for a while to allow targettarget to catch up
-			-- adfprint('target changed too soon, delaying update')
-			return
-		end
-		local armorcurr = UnitResistance(aDF_target,0)
---		aDF.armor:SetText(UnitResistance(aDF_target,0).." ["..math.floor(((UnitResistance(aDF_target,0) / (467.5 * UnitLevel("player") + UnitResistance(aDF_target,0) - 22167.5)) * 100),1).."%]")
-		aDF.armor:SetText(armorcurr)
-		-- adfprint(string.format('aDF_target %s targetname %s armorcurr %s armorprev %s', aDF_target, UnitName(aDF_target), armorcurr, aDF_armorprev))
-		if armorcurr > aDF_armorprev then
-			local armordiff = armorcurr - aDF_armorprev
-			local diffreason = ""
-			if aDF_armorprev ~= 0 and aDFArmorVals[armordiff] then
-				diffreason = " (Dropped " .. aDFArmorVals[armordiff] .. ")"
-			end
-			local msg = UnitName(aDF_target).."'s armor: "..aDF_armorprev.." -> "..armorcurr..diffreason
-			-- adfprint(msg)
-			if UnitIsUnit(aDF_target,'target') then
-				-- targettarget does not trigger events when it changes. this means it's hard to tell apart units with the same name, so we don't allow notifications for it
-				-- ^ TODO: this isn't true with superwow, we can tell anything apart we like, what is the correct behavior?
-				aDF:SendChatMessage(msg, gui_chan)
-			end
-
-		end
-		aDF_armorprev = armorcurr
-
-		-- if gui_Options["Resistances"] == 1 then
+    if aDF_target ~= nil and UnitExists(aDF_target) and not UnitIsDead(aDF_target) then
+        if UnitIsUnit(aDF_target,'targettarget') and GetTime() < (last_target_change_time + 1.3) then
+            return
+        end
+        
+        local targetData = aDF:GetTargetData(aDF_target)
+        if not targetData then return end
+        
+        local armorcurr = UnitResistance(aDF_target,0)
+        aDF.armor:SetText(armorcurr)
+        
+        if armorcurr ~= targetData.armor then
+            if armorcurr > targetData.armor and targetData.armor > 0 then
+                local armordiff = armorcurr - targetData.armor
+                local diffreason = ""
+                if aDFArmorVals[armordiff] then
+                    diffreason = " (Dropped " .. aDFArmorVals[armordiff] .. ")"
+                end
+                local msg = UnitName(aDF_target).."'s armor: "..targetData.armor.." -> "..armorcurr..diffreason
+                if UnitIsUnit(aDF_target,'target') then
+                    aDF:SendChatMessage(msg, gui_chan)
+                end
+            end
+            targetData.armor = armorcurr
+        end
 		if true then
 			aDF.res:SetText("|cffFF0000FR "..UnitResistance(aDF_target,2).." |cff00FF00NR "..UnitResistance(aDF_target,3).." |cff4AE8F5FrR "..UnitResistance(aDF_target,4).." |cff800080SR "..UnitResistance(aDF_target,5))
 		else
 			aDF.res:SetText("")
 		end
-		for i,v in pairs(guiOptions) do
-			if aDF:GetDebuff(aDF_target,aDFSpells[i]) then
-				aDF_frames[i]["icon"]:SetAlpha(1)
-				if aDF:GetDebuff(aDF_target,aDFSpells[i],1) > 1 then
-					aDF_frames[i]["nr"]:SetText(aDF:GetDebuff(aDF_target,aDFSpells[i],1))
-				end
-				if i == "Sunder Armor" then
-					local elapsed = 30 - (GetTime() - sundered_at)
-					aDF_frames[i]["nr"]:SetText(aDF:GetDebuff(aDF_target,aDFSpells[i],1))
-					aDF_frames[i]["dur"]:SetText(format("%0.f",elapsed >= 0 and elapsed or 0))
-				end
-				if i == "Armor Shatter" then
-					local elapsed = 45 - (GetTime() - shattered_at)
-					-- can't know anni duration once stacks are maxxed, bump it if it's still up?
-					if elapsed < 0 then
-						shattered_at = shattered_at + 20
+		
+        for debuffName, _ in pairs(guiOptions) do
+            local isActive = aDF:GetDebuff(aDF_target, debuffName)
+            
+            if isActive then
+                aDF_frames[debuffName]["icon"]:SetAlpha(1)
+                
+                local timerData = aDF:GetDebuffTimer(targetData, debuffName)
+                
+                local stacks = aDF:GetDebuff(aDF_target, debuffName, 1)
+                if stacks and (debuffName == "Armor Shatter" or stacks > 1) then
+                    aDF_frames[debuffName]["nr"]:SetText(stacks)
+                else
+                    aDF_frames[debuffName]["nr"]:SetText("")
+                end
+                local config = aDFSpellConfig[debuffName]
+                if config and config.duration and timerData then
+                    local elapsed = config.duration - (GetTime() - timerData.timer)
+                    
+                    if debuffName == "Armor Shatter" and elapsed < 0 then
+                        timerData.timer = timerData.timer + 20
+                        elapsed = config.duration - (GetTime() - timerData.timer)
+                    end
+                    if elapsed > 0 then
+						aDF_frames[debuffName]["dur"]:SetText(format("%0.f", elapsed))
 					end
-					aDF_frames[i]["nr"]:SetText(aDF:GetDebuff(aDF_target,aDFSpells[i],1))
-					aDF_frames[i]["dur"]:SetText(format("%0.f",elapsed >= 0 and elapsed or 0))
-				end
-			else
-				aDF_frames[i]["icon"]:SetAlpha(0.3)
-				aDF_frames[i]["nr"]:SetText("")
-				aDF_frames[i]["dur"]:SetText("")
-			end		
-		end
-	else
-		aDF.armor:SetText("")
-		aDF.res:SetText("")
-		for i,v in pairs(guiOptions) do
-			aDF_frames[i]["icon"]:SetAlpha(0.3)
-			aDF_frames[i]["nr"]:SetText("")
-			aDF_frames[i]["dur"]:SetText("")
-		end
-	end
+                else
+                    aDF_frames[debuffName]["dur"]:SetText("")
+                end
+            else
+                aDF_frames[debuffName]["icon"]:SetAlpha(0.3)
+                aDF_frames[debuffName]["nr"]:SetText("")
+                aDF_frames[debuffName]["dur"]:SetText("")
+            end        
+        end
+    else
+        aDF.armor:SetText("")
+        aDF.res:SetText("")
+        for debuffName, _ in pairs(guiOptions) do
+            aDF_frames[debuffName]["icon"]:SetAlpha(0.3)
+            aDF_frames[debuffName]["nr"]:SetText("")
+            aDF_frames[debuffName]["dur"]:SetText("")
+        end
+    end
 end
 
 function aDF:UpdateCheck()
@@ -400,29 +600,31 @@ end
 -- Sort function to show/hide frames aswell as positioning them correctly
 
 function aDF:Sort()
-	for name,_ in pairs(aDFDebuffs) do
+	-- for name,_ in pairs(aDFDebuffs) do
+	for name,_ in pairs(aDFSpellConfig) do
 		if guiOptions[name] == nil then
 			aDF_frames[name]:Hide()
 		else
 			aDF_frames[name]:Show()
 		end
 	end
+	
 	local aDFTempTable = {}
 	for dbf,_ in pairs(guiOptions) do
 		table.insert(aDFTempTable,dbf)
 	end
 	table.sort(aDFTempTable, function(a,b) return a<b end)
+	
+	local maxPerRow = 7
 	for n, v in pairs(aDFTempTable) do
-	--DEFAULT_CHAT_FRAME:AddMessage("Name: "..v)
 		if v and aDF_frames[v] then
-			if n > 7 then
-				y_=-((24+gui_Optionsxy)*2)
-				x_=(n-1)-7
-				aDF_frames[v]:SetPoint('BOTTOMLEFT',(24+gui_Optionsxy)*x_,y_)
-			else
-				y_=-(24+gui_Optionsxy)
-				aDF_frames[v]:SetPoint('BOTTOMLEFT',(24+gui_Optionsxy)*(n-1),y_)
-			end
+			local row = math.floor((n-1) / maxPerRow)
+			local col = math.mod(n-1, maxPerRow)
+			
+			local x_ = (24 + gui_Optionsxy) * col
+			local y_ = -(24 + gui_Optionsxy) * (row + 1)
+			
+			aDF_frames[v]:SetPoint('BOTTOMLEFT', x_, y_)
 		end
 	end
 end
@@ -522,13 +724,13 @@ function aDF.Options:Gui()
 	-- checkboxes
 
 	local temptable = {}
-	for tempn,_ in pairs(aDFDebuffs) do
+	for tempn,_ in pairs(aDFSpellConfig) do
 		table.insert(temptable,tempn)
 	end
 	table.sort(temptable, function(a,b) return a<b end)
 	-- table.insert(temptable,"Resistances")
 	
-	local x,y=130,-80
+	local x,y=65,-80
 	for _,name in pairs(temptable) do
 		y=y-40
 		if y < -360 then y=-120; x=x+140 end
@@ -582,46 +784,64 @@ end
 
 -- function to check a unit for a certain debuff and/or number of stacks
 function aDF:GetDebuff(name,buff,stacks)
-	local a=1
-	while UnitDebuff(name,a) do
-		local _,s,_,id = UnitDebuff(name,a)
-		local n = SpellInfo(id)
-		-- local _, s = UnitDebuff(name,a)
-		-- aDF_tooltip:SetOwner(UIParent, "ANCHOR_NONE");
-		-- aDF_tooltip:ClearLines()
-		-- aDF_tooltip:SetUnitDebuff(name,a)
-		-- local aDFtext = aDF_tooltipTextL:GetText()
-		-- if string.find(aDFtext,buff) then 
-		if buff == n then 
-			if stacks == 1 then
-				return s
-			else
-				return true 
-			end
-		end
-		a=a+1
-	end
+    local normalizedBuff = aDFDebuffAliases[buff] or buff
+    
+    local a=1
+    while UnitDebuff(name,a) do
+        local _,s,_,id = UnitDebuff(name,a)
+        local n = SpellInfo(id)
+        local normalizedN = aDFDebuffAliases[n] or n
+        
+        if normalizedBuff == normalizedN then 
+            if stacks == 1 then
+                return s
+            else
+                return true 
+            end
+        end
+        a=a+1
+    end
 
-	-- if not found, check buffs in case over the debuff limit
-	a=1
-	while UnitBuff(name,a) do
-		local _,s,id = UnitBuff(name,a)
-		local n = SpellInfo(id)
-		-- aDF_tooltip:SetOwner(UIParent, "ANCHOR_NONE");
-		-- aDF_tooltip:ClearLines()
-		-- aDF_tooltip:SetUnitBuff(name,a)
-		-- local aDFtext = aDF_tooltipTextL:GetText()
-		-- if string.find(aDFtext,buff) then 
-		if buff == n then 
-			if stacks == 1 then
-				return s
-			else
-				return true 
-			end
-		end
-		a=a+1
-	end
-	return false
+    -- if not found, check buffs in case over the debuff limit
+    a=1
+    while UnitBuff(name,a) do
+        local _,s,id = UnitBuff(name,a)
+        local n = SpellInfo(id)
+        local normalizedN = aDFDebuffAliases[n] or n
+        
+        if normalizedBuff == normalizedN then 
+            if stacks == 1 then
+                return s
+            else
+                return true 
+            end
+        end
+        a=a+1
+    end
+    return false
+end
+
+
+local function extractSpellNameAndCaster(text, isPlayer)
+    if isPlayer then
+        for _, pattern in ipairs(aDFPlayerPatterns) do
+            local _, _, spellName = string.find(text, pattern)
+            if spellName then
+                local normalizedSpellName = aDFDebuffAliases[spellName] or spellName
+                return normalizedSpellName, UnitName("player")
+            end
+        end
+        return nil, nil
+    end
+        
+    for _, pattern in ipairs(aDFOtherPlayerPatterns) do
+        local startPos, endPos, caster, spellName = string.find(text, pattern)
+        if startPos then
+            local normalizedSpellName = aDFDebuffAliases[spellName] or spellName
+            return normalizedSpellName, caster
+        end
+    end 
+    return nil, nil
 end
 
 -- event function, will load the frames we need
@@ -631,53 +851,44 @@ function aDF:OnEvent()
 		aDF_target = nil
 		aDF_armorprev = 30000
 		if gui_chan == nil then gui_chan = Say end
-		aDF:Init() -- loads frame, see the function
-		aDF.Options:Gui() -- loads options frame
-		aDF:Sort() -- sorts the debuff frames and places them to eachother
+		aDF:Init()
+		aDF.Options:Gui()
+		aDF:Sort()
 		DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r Loaded",1,1,1)
 		DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf show|r to show frame",1,1,1)
 		DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf hide|r to hide frame",1,1,1)
 		DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r type |cFFFFFF00 /adf options|r for options frame",1,1,1)
-  elseif event == "UNIT_AURA" and arg1 == aDF_target then
-		-- print("adf update")
-		local anni_prev = tonumber(aDF_frames["Armor Shatter"]["nr"]:GetText()) or 0
-		aDF:Update()
-		local anni = tonumber(aDF_frames["Armor Shatter"]["nr"]:GetText()) or 0
-		if anni_prev ~= anni then shattered_at = GetTime() end
-		if anni_stacks_maxed and anni < 3 then anni_stacks_maxed = false end
-		if not anni_stacks_maxed and anni >= 3 then
-			UIErrorsFrame:AddMessage("Annihilator Stacks Maxxed",1,0.1,0.1,1)
-			PlaySoundFile("Sound\\Spells\\YarrrrImpact.wav")
-			anni_stacks_maxed = true
-		end
+		     
+    elseif event == "UNIT_AURA" and aDF_target ~= nil and arg1 ~= nil and UnitName(arg1) == UnitName(aDF_target) then
+        local targetData = aDF:GetTargetData(aDF_target)
+        if targetData then
+            local anni_prev = tonumber(aDF_frames["Armor Shatter"]["nr"]:GetText()) or 0
+            aDF:Update()
+            local anni = tonumber(aDF_frames["Armor Shatter"]["nr"]:GetText()) or 0
+            if anni_prev ~= anni then 
+                aDF:SetDebuffTimer(targetData, "Armor Shatter", GetTime())
+            end
+            
+            if anni_stacks_maxed and anni < 3 then anni_stacks_maxed = false end
+            if not anni_stacks_maxed and anni >= 3 then
+                UIErrorsFrame:AddMessage("Annihilator Stacks Maxxed",1,0.1,0.1,1)
+                anni_stacks_maxed = true
+            end
+        end
 	elseif event == "UNIT_CASTEVENT" and arg2 == aDF_target then
-	-- elseif event == "UNIT_CASTEVENT" then
-		-- print(SpellInfo(arg4) .. " " .. arg4)
-		local name = SpellInfo(arg4)
-		if name == "Sunder Armor" then
-			sunderers[UnitName(arg1)] = sundered_at
-			local now = GetTime()
-			-- print("since sunder: "..now - sundered_at)
-			sundered_at = now
-		end
-
-	elseif event == "CHAT_MSG_SPELL_SELF_DAMAGE" then -- self
-		local sunder_miss = string.find(arg1,"^Your Sunder Armor") -- (was parried/dodges) or (missed)
-		if not sunder_miss then return end
-		local n = UnitName("player")
-		if sunderers[n] then
-			sundered_at = sunderers[n]
-			sunderers[n] = nil
-		end
-
+        local name = SpellInfo(arg4)
+        local normalizedName = aDFDebuffAliases[name] or name
+        aDF:HandleDebuffCast(aDF_target, UnitName(arg1), normalizedName)
+	elseif event == "CHAT_MSG_SPELL_SELF_DAMAGE" then
+        local spellName, casterName = extractSpellNameAndCaster(arg1, true)
+        if spellName then
+            aDF:HandleDebuffMiss(aDF_target, casterName, spellName)
+        end
 	elseif event == "CHAT_MSG_SPELL_PARTY_DAMAGE" or event == "CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE" then
-		local _,_,n = string.find(arg1,"^(%S+)%s?'s Sunder Armor") -- (was parried) or (missed)
-		if not n then return end
-		if sunderers[n] then
-			sundered_at = sunderers[n]
-			sunderers[n] = nil
-		end
-
+        local spellName, casterName = extractSpellNameAndCaster(arg1, false)
+        if spellName then
+            aDF:HandleDebuffMiss(aDF_target, casterName, spellName)
+        end
 	elseif event == "PLAYER_TARGET_CHANGED" then
 		local aDF_target_old = aDF_target
 		aDF_target = nil
@@ -695,10 +906,27 @@ function aDF:OnEvent()
 		if aDF_target ~= aDF_target_old then
 			anni_stacks_maxed = false
 		end
-
+		
+		if random(100) < 25 then
+            aDF:CleanupTargetData()
+        end
 		-- adfprint('PLAYER_TARGET_CHANGED ' .. tostring(aDF_target))
 		aDF:Update()
 	end
+end
+
+function aDF:PrintDataStats()
+    local totalTargets = 0
+    local totalTimers = 0
+    
+    for guid, data in pairs(aDFTargetData) do
+        totalTargets = totalTargets + 1
+        for debuffName, timerData in pairs(data.timers) do
+            totalTimers = totalTimers + 1
+        end
+    end
+    
+    adfprint(string.format("Targets: %d, Active timers: %d", totalTargets, totalTimers))
 end
 
 -- update and onevent who will trigger the update and event functions
@@ -718,8 +946,10 @@ function aDF.slash(arg1,arg2,arg3)
 			aDF:Show()
 		elseif arg1 == "hide" then
 			aDF:Hide()
-		elseif arg1 == "options" then
+		elseif arg1 == "options" or arg1 == "opt" then
 			aDF.Options:Show()
+		elseif arg1 == "debug" then
+			aDF:PrintDataStats()
 		else
 			DEFAULT_CHAT_FRAME:AddMessage(arg1)
 			DEFAULT_CHAT_FRAME:AddMessage("|cFFF5F54A aDF:|r unknown command",1,0.3,0.3);
