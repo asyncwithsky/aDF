@@ -97,9 +97,9 @@ aDFSpellConfig = {
 		name = "Shadow Bolt",
 		icon = "Interface\\Icons\\Spell_Shadow_ShadowBolt"
 	},
-	["Curse of Tongue"] = {
+	["Curse of Tongues"] = {
 		duration = 30,
-		name = "Curse of Tongue",
+		name = "Curse of Tongues",
 		icon = "Interface\\Icons\\Spell_Shadow_CurseOfTounges"
 	},
 	["Shadow Weaving"] = {
